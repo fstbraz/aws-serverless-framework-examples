@@ -1,0 +1,31 @@
+
+service: tooling-s3-sqs
+
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  
+plugins:
+  - serverless-localstack
+  - serverless-mocha-plugin
+  - serverless-offline
+
+custom:
+  localstack:
+    stages:
+      - local
+    # desabilitar o localstack quando fizer deploy
+    autostart: false
+  serverless-offline:
+    useChildProcesses: true
+
+functions:
+  hello:
+    handler: handler.hello
+    events:
+      - http:
+          method: get
+          path: hello
+
+
