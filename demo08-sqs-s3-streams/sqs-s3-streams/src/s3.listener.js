@@ -1,4 +1,6 @@
 const AWS = require('aws-sdk')
+const { Writable, pipeline } = require('stream')
+const csvtojson = require('csvtojson')
 class Handler{
 
     constructor({sqsSvc, s3Svc}){
@@ -12,6 +14,7 @@ class Handler{
         const s3port = process.env.S3_PORT || '4572'
         const sqsPort = process.env.SQS_PORT || '4576'
         const isLocal = process.env.isLocal
+  
         const s3endpoint = new AWS.Endpoint(
             `http://${host}:${s3port}`
         )
@@ -47,6 +50,31 @@ class Handler{
         return QueueUrl
     }
 
+    processDataOnDemand(queueUrl){
+        const writableStream = new Writable({
+            write: (chunk, encoding, done) => {
+                const item = chunk.toString()
+                console.log('sending...', item, 'at', new Date().toISOString())
+                this.sqsSvc.sendMessage({
+                    QueueUrl: queueUrl,
+                    MessageBody: item
+                }, done)
+            }
+        })
+
+        return writableStream
+    }
+
+    async pipefyStreams(...args){
+        return new Promise((resolve, reject) => {
+            pipeline(
+                ...args, 
+                error => error ? reject(error): resolve()
+            )
+                
+        })
+    }
+
     async main(event){
         const [
             {
@@ -68,15 +96,21 @@ class Handler{
             const params = {
                 Bucket: name, Key: key
             }
-            this.s3Svc.getObject(params)
-                .createReadStream()
-                .on("data", msg => console.log('data!', msg.toString()))
-                .on("error", msg => console.log('error!', msg.toString()))
-                .on("close", msg => console.log('close!', msg.toString()));
+
+            // stop execution if any error occurs, doesn't need onfinish to return the handler 
+            await this.pipefyStreams(
+                this.s3Svc
+                    .getObject(params)
+                    .createReadStream(),
+                csvtojson(),
+                this.processDataOnDemand(queueUrl)
+            )
+
+            console.log('process finished...', new Date().toISOString())
 
             return {
                 statusCode: 200,
-                body: 'Hello'
+                body: 'Process finished with success'
             }
         } catch (error){
             console.log('**error', error.stack)
