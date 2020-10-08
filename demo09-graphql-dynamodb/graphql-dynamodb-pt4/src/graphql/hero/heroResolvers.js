@@ -4,9 +4,8 @@ const resolvers = {
         async skills(root, args, context){
             const skills = root.skills.map(el => context.Skill.findOne(el))
             const results = await Promise.all(skills)
-            const all = results.reduce(prev)
-            console.log(root)
-            return [];
+            const all = results.reduce((prev, next) => prev.concat(next), [])
+            return all;
         }
     },
     // GET
